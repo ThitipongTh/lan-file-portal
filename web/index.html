@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LAN File Portal</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color-scheme:light dark}
+*{box-sizing:border-box}body{margin:0;background:light-dark(#f5f7fb,#131820);color:light-dark(#142337,#eef3fb)}
+main{max-width:1000px;margin:40px auto;padding:0 20px}
+header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:22px}
+h1{margin:0 0 8px}small,.muted{color:light-dark(#63758c,#acbace)}
+.panel{border:1px solid light-dark(#dce4ee,#354253);border-radius:14px;background:light-dark(white,#1e2732);overflow:hidden}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:18px;border-bottom:1px solid light-dark(#e8edf3,#354253)}
+#crumbs{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+button{font:inherit;cursor:pointer}.crumb{background:none;border:0;padding:5px;color:light-dark(#165fb5,#9dcaff)}
+input,select{font:inherit;padding:10px;border-radius:8px;border:1px solid light-dark(#ccd6e1,#526074);background:light-dark(white,#263343);color:inherit}
+.item{display:grid;grid-template-columns:minmax(0,1fr) 100px 100px;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid light-dark(#edf1f5,#2e3c4d)}
+.item:last-child{border:0}.name{display:flex;gap:12px;align-items:center;min-width:0}.name a,.name button{border:0;background:none;color:inherit;text-decoration:none;text-align:left;padding:0;overflow-wrap:anywhere}
+.name a:hover,.name button:hover{text-decoration:underline}.download{color:light-dark(#1263ba,#a4d2ff);text-decoration:none}
+.empty{text-align:center;padding:40px}footer{text-align:center;margin-top:20px}
+@media(max-width:560px){main{margin:22px auto}.item{grid-template-columns:minmax(0,1fr) 70px}.download{display:none}input{max-width:52vw}}
+</style>
+</head>
+<body>
+<main>
+<header><div><h1>📁 LAN File Portal</h1><small>Browse and download files on the local network.</small></div><small id="count">Loading…</small></header>
+<section class="panel">
+<div class="toolbar"><nav id="crumbs" aria-label="Current folder"></nav><div><input id="search" type="search" placeholder="Search this folder" aria-label="Search files"> <select id="sort" aria-label="Sort"><option value="name">Name</option><option value="size">Size</option></select></div></div>
+<div id="files" aria-live="polite"><div class="empty">Loading…</div></div>
+</section><footer><small>Read-only downloads · No account required · Trusted LAN only</small></footer>
+</main>
+<script>
+(()=>{
+const files=document.querySelector('#files'),crumbs=document.querySelector('#crumbs'),count=document.querySelector('#count'),search=document.querySelector('#search'),sort=document.querySelector('#sort');
+let path=[],entries=[];
+const node=(tag,text,klass)=>{const e=document.createElement(tag);e.textContent=text;if(klass)e.className=klass;return e};
+const url=(base,parts,dir=false)=>'/'+base+'/'+parts.map(encodeURIComponent).join('/')+(dir&&parts.length?'/':'');
+const size=n=>n==null?'—':n<1024?n+' B':(n/1024**Math.floor(Math.log(n)/Math.log(1024))).toFixed(1)+' '+['B','KB','MB','GB','TB'][Math.floor(Math.log(n)/Math.log(1024))];
+function go(next){path=next;search.value='';load()}
+function breadcrumbs(){crumbs.replaceChildren();const home=node('button','Home','crumb');home.onclick=()=>go([]);crumbs.append(home);path.forEach((p,i)=>{crumbs.append(node('span','/','muted'));const b=node('button',p,'crumb');b.onclick=()=>go(path.slice(0,i+1));crumbs.append(b)})}
+function render(){
+const q=search.value.toLocaleLowerCase();
+const result=entries.filter(e=>e.name.toLocaleLowerCase().includes(q)).sort((a,b)=>Number(b.type==='directory')-Number(a.type==='directory')||(sort.value==='size'?(b.size||0)-(a.size||0):a.name.localeCompare(b.name)));
+files.replaceChildren();count.textContent=result.length+' item'+(result.length===1?'':'s');
+if(!result.length){files.append(node('div',entries.length?'No matching files':'Folder is empty','empty'));return}
+for(const e of result){
+const folder=e.type==='directory',row=node('div','','item'),name=node('div','','name');
+name.append(node('span',folder?'📁':'📄'));
+const link=node(folder?'button':'a',e.name);if(folder)link.onclick=()=>go([...path,e.name]);else{link.href=url('downloads',[...path,e.name]);link.download=''}
+name.append(link);row.append(name,node('span',folder?'Folder':size(e.size),'muted'));
+if(!folder){const dl=node('a','Download','download');dl.href=url('downloads',[...path,e.name]);dl.download='';row.append(dl)}else row.append(node('span','','muted'));
+files.append(row)
+}
+}
+async function load(){breadcrumbs();files.replaceChildren(node('div','Loading…','empty'));try{
+const r=await fetch(url('api',path,true),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();if(!Array.isArray(data))throw Error('Unexpected response');entries=data.filter(e=>e.name!=='.'&&e.name!=='..'&&!e.name.startsWith('.'));render()
+}catch(e){entries=[];count.textContent='Unavailable';files.replaceChildren(node('div','Could not load files: '+e.message,'empty'))}}
+search.addEventListener('input',render);sort.addEventListener('change',render);load();
+})();
+</script>
+</body>
+</html>
