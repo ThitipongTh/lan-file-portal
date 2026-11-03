@@ -4,6 +4,10 @@ You are the agent deploying and maintaining AIMSLAB LAN File Sharing. Treat this
 
 ## Deploy
 
+- Before each deployment, you must explicitly ask the operator which host folder to share: the default `./shared` folder or a custom folder configured through `SHARE_PATH` in `.env`. Explain that `SHARE_PATH` also configures the default folder; these are two folder choices, not different deployment systems.
+- You must wait for the operator's answer before you change deployment configuration or start/recreate the service. Do not silently select the default or reuse an existing `.env` value. If the operator has already explicitly specified the folder for this deployment, treat that as the answer and do not ask again.
+- If the operator chooses a custom folder without providing its path, you must ask for the full host path. Check the target operating system when it is unknown and needed to interpret the path. You may inspect files and prepare changes while waiting, but must not deploy.
+
 - You must use Docker Engine with Docker Compose v2 or later, or Docker Desktop with Linux containers on Windows/macOS.
 - You must choose a host folder containing only the files the operator intends to distribute. Create it before startup; do not mount a home directory, drive root, or repository containing credentials.
 - You should copy `.env.example` to `.env` and set `SHARE_PATH` and `PORT` for the target host. Use the cross-platform examples in the README; prefer an absolute path and quote spaces. Keep `.env` and shared contents out of commits.
