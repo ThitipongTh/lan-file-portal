@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · AIMsLab File Sharing</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color-scheme:light dark}
+*{box-sizing:border-box}body{margin:0;background:light-dark(#f5f7fb,#131820);color:light-dark(#142337,#eef3fb)}
+main{max-width:1000px;margin:36px auto;padding:0 20px}
+header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+h1{margin:0}small,.muted{color:light-dark(#63758c,#acbace)}
+a{color:light-dark(#165fb5,#9dcaff)}
+.panel{border:1px solid light-dark(#dce4ee,#354253);border-radius:14px;background:light-dark(white,#1e2732);overflow:hidden;margin-bottom:22px}
+.pad{padding:18px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:18px;border-bottom:1px solid light-dark(#e8edf3,#354253)}
+#crumbs{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid light-dark(#ccd6e1,#526074);background:light-dark(#eef4fb,#263343);color:inherit;padding:8px 12px}
+button.link{border:0;background:none;padding:4px;color:light-dark(#165fb5,#9dcaff)}
+button.danger{color:#b62f33;border-color:#e6b4b6}
+input{font:inherit;padding:10px;border-radius:8px;border:1px solid light-dark(#ccd6e1,#526074);background:light-dark(white,#263343);color:inherit}
+.crumb{background:none;border:0;padding:5px;color:light-dark(#165fb5,#9dcaff)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.stat{padding:14px;border-radius:12px;background:light-dark(#f3f7fc,#232e3b)}
+.stat b{display:block;font-size:1.5rem;margin-top:4px}
+.item{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid light-dark(#edf1f5,#2e3c4d)}
+.item:last-child{border:0}.name{display:flex;gap:10px;align-items:center;min-width:0}.name button.nav{border:0;background:none;color:inherit;text-align:left;padding:0;overflow-wrap:anywhere;cursor:pointer}
+.actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.empty{text-align:center;padding:36px}
+.xfer{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed light-dark(#e3e9f1,#313f50);font-size:.92rem}
+.bar{height:6px;border-radius:4px;background:light-dark(#dde6f1,#31414f);overflow:hidden;margin-top:4px}
+.bar>span{display:block;height:100%;background:light-dark(#2f7ad6,#4f9bf0)}
+.msg{padding:10px 14px;border-radius:8px;margin-bottom:12px}
+.msg.err{background:#fdecec;color:#8f2528}.msg.ok{background:#e8f6ec;color:#1f6b36}
+.chart{margin-top:16px}
+.chart-head{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+.chart-head strong{font-size:1rem}
+.legend{margin-left:auto;display:flex;gap:16px;align-items:center;font-size:.9rem}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.sw.dl{background:#2f7ad6}.sw.ul{background:#e0893a}
+canvas#spark{width:100%;height:180px;display:block;border-radius:10px;background:light-dark(#f7fafd,#1a232e)}
+label.up{display:inline-block}
+@media(max-width:560px){.item{grid-template-columns:minmax(0,1fr) auto}.item .size{display:none}}
+</style>
+</head>
+<body>
+<main>
+<header><div><h1>🛠️ Admin · AIMsLab File Sharing</h1><small>Manage files and watch live transfer speed.</small></div>
+<div><a href="/">← Public view</a> <button id="logout" style="display:none">Log out</button></div></header>
+
+<div id="gate" class="panel pad"><div class="empty">Loading…</div></div>
+
+<section id="dash" class="panel" style="display:none">
+<div class="pad">
+<div class="stats">
+<div class="stat">Download <b id="s-down">0 B/s</b></div>
+<div class="stat">Upload <b id="s-up">0 B/s</b></div>
+<div class="stat">Served total <b id="s-td">0 B</b></div>
+<div class="stat">Received total <b id="s-tu">0 B</b></div>
+</div>
+<div class="chart">
+<div class="chart-head"><strong>Transfer speed</strong><small class="muted">last 60 seconds</small>
+<span class="legend"><span><i class="sw dl"></i>Download</span><span><i class="sw ul"></i>Upload</span></span></div>
+<canvas id="spark" width="920" height="180" aria-label="Download and upload speed over the last 60 seconds"></canvas>
+</div>
+<h3 style="margin:16px 0 6px">Active transfers</h3>
+<div id="xfers"><div class="muted">None right now.</div></div>
+<small class="muted" id="uptime"></small>
+</div>
+</section>
+
+<section id="mgr" class="panel" style="display:none">
+<div class="toolbar"><nav id="crumbs" aria-label="Current folder"></nav>
+<div><label class="up"><input id="file" type="file" style="display:none"><button id="uploadBtn">⬆ Upload</button></label>
+<button id="mkdirBtn">📁 New folder</button></div></div>
+<div id="feedback"></div>
+<div id="files"><div class="empty">Loading…</div></div>
+</section>
+</main>
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const gate=$('#gate'),dash=$('#dash'),mgr=$('#mgr'),logout=$('#logout');
+let path=[],entries=[],ws=null;
+
+const node=(t,x,k)=>{const e=document.createElement(t);if(x!=null)e.textContent=x;if(k)e.className=k;return e};
+const rel=()=>path.join('/');
+const human=(n,s)=>{n=n||0;if(n<1024)return n.toFixed(s?0:0)+' '+(s?'B/s':'B');const u=s?['B/s','KB/s','MB/s','GB/s']:['B','KB','MB','GB','TB'];const i=Math.min(Math.floor(Math.log(n)/Math.log(1024)),u.length-1);return (n/1024**i).toFixed(1)+' '+u[i]};
+const api=async(url,opt)=>{const r=await fetch(url,Object.assign({cache:'no-store'},opt));if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).detail||m}catch(e){}throw Error(m)}return r.status===204?null:r.json()};
+
+function flash(msg,ok){const f=$('#feedback');f.replaceChildren(node('div',msg,'msg '+(ok?'ok':'err')));setTimeout(()=>{if(f.firstChild)f.firstChild.remove()},ok?3000:6000)}
+
+// ---- gate: decide what to show ----
+async function boot(){
+let s;try{s=await api('/admin/api/session')}catch(e){gate.replaceChildren(node('div','Cannot reach server: '+e.message,'empty'));return}
+if(!s.admin_enabled){gate.replaceChildren(node('div','The admin page is disabled because no admin password is set. Set ADMIN_PASSWORD in .env and restart.','empty'));return}
+if(s.authenticated){showApp()}else{showLogin()}
+}
+function showLogin(){
+gate.style.display='';dash.style.display='none';mgr.style.display='none';logout.style.display='none';
+gate.replaceChildren();const box=node('div','','pad');
+box.append(node('h3','Admin sign in'));
+const pw=node('input');pw.type='password';pw.placeholder='Admin password';pw.style.marginRight='8px';
+const btn=node('button','Sign in');const err=node('div','','');err.style.color='#b62f33';err.style.marginTop='10px';
+const submit=async()=>{btn.disabled=true;try{await api('/admin/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:pw.value})});showApp()}catch(e){err.textContent=e.message;btn.disabled=false}};
+btn.onclick=submit;pw.addEventListener('keydown',e=>{if(e.key==='Enter')submit()});
+box.append(pw,btn,err);gate.append(box);pw.focus();
+}
+function showApp(){gate.style.display='none';dash.style.display='';mgr.style.display='';logout.style.display='';connectWS();load()}
+logout.onclick=async()=>{try{await api('/admin/api/logout',{method:'POST'})}catch(e){}if(ws){ws.close();ws=null}showLogin();gate.style.display='';};
+
+// ---- live metrics ----
+function connectWS(){
+const proto=location.protocol==='https:'?'wss':'ws';
+ws=new WebSocket(proto+'://'+location.host+'/admin/ws/metrics');
+ws.onmessage=ev=>paint(JSON.parse(ev.data));
+ws.onclose=()=>{ws=null;setTimeout(()=>{if(dash.style.display!=='none')connectWS()},2000)};
+}
+function paint(m){
+$('#s-down').textContent=human(m.down,1);$('#s-up').textContent=human(m.up,1);
+$('#s-td').textContent=human(m.total_down);$('#s-tu').textContent=human(m.total_up);
+$('#uptime').textContent='Server up '+Math.floor(m.uptime/60)+' min · metrics reset on restart';
+const x=$('#xfers');x.replaceChildren();
+if(!m.active.length){x.append(node('div','None right now.','muted'))}
+else for(const t of m.active){const row=node('div','','xfer');
+const l=node('div');l.append(node('span',(t.direction==='up'?'⬆ ':'⬇ ')+t.name));
+if(t.pct!=null){const bar=node('div','','bar');const sp=node('span');sp.style.width=Math.min(t.pct,100)+'%';bar.append(sp);l.append(bar)}
+row.append(l,node('div',human(t.speed,1),'muted'));x.append(row)}
+spark(m.history);
+}
+function spark(h){
+const c=$('#spark'),g=c.getContext('2d');
+const dpr=window.devicePixelRatio||1,W=c.clientWidth||920,H=c.clientHeight||180;
+if(c.width!==Math.round(W*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
+g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+const dark=matchMedia('(prefers-color-scheme: dark)').matches;
+const grid=dark?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)',axis=dark?'#8aa0b8':'#6a7a8c';
+const padL=6,padR=8,padT=12,padB=8,plotW=W-padL-padR,plotH=H-padT-padB;
+h=h||[];const max=Math.max(1,...h.map(p=>Math.max(p.down,p.up)));
+g.font='11px system-ui';g.textBaseline='bottom';g.textAlign='left';
+for(let i=0;i<=4;i++){const y=padT+plotH*i/4;g.strokeStyle=grid;g.beginPath();g.moveTo(padL,y);g.lineTo(W-padR,y);g.stroke();
+g.fillStyle=axis;g.fillText(human(max*(1-i/4),1),padL+3,i===0?y+12:y-2)}
+const n=h.length,step=n>1?plotW/(n-1):0;
+const draw=(key,stroke,fill)=>{if(!n)return;const Y=p=>padT+plotH-(p[key]/max)*plotH;
+g.beginPath();g.moveTo(padL,Y(h[0]));h.forEach((p,i)=>g.lineTo(padL+i*step,Y(p)));
+g.lineTo(padL+(n-1)*step,padT+plotH);g.lineTo(padL,padT+plotH);g.closePath();g.fillStyle=fill;g.fill();
+g.beginPath();h.forEach((p,i)=>{const x=padL+i*step,y=Y(p);i?g.lineTo(x,y):g.moveTo(x,y)});g.strokeStyle=stroke;g.lineWidth=2;g.stroke()};
+draw('up','#e0893a','rgba(224,137,58,.14)');draw('down','#2f7ad6','rgba(47,122,214,.16)');
+}
+
+// ---- file manager ----
+function breadcrumbs(){const c=$('#crumbs');c.replaceChildren();const h=node('button','Home','crumb');h.onclick=()=>{path=[];load()};c.append(h);path.forEach((p,i)=>{c.append(node('span','/','muted'));const b=node('button',p,'crumb');b.onclick=()=>{path=path.slice(0,i+1);load()};c.append(b)})}
+async function load(){breadcrumbs();const box=$('#files');box.replaceChildren(node('div','Loading…','empty'));
+try{entries=await api('/api/list?path='+encodeURIComponent(rel()))}catch(e){box.replaceChildren(node('div','Could not load: '+e.message,'empty'));return}
+render()}
+function render(){const box=$('#files');box.replaceChildren();
+if(!entries.length){box.append(node('div','Folder is empty','empty'));return}
+for(const e of entries){const folder=e.type==='directory',row=node('div','','item'),name=node('div','','name');
+name.append(node('span',folder?'📁':'📄'));
+if(folder){const b=node('button',e.name,'nav');b.onclick=()=>{path=[...path,e.name];load()};name.append(b)}
+else{const a=node('a',e.name);a.href='/download?path='+encodeURIComponent((path.concat(e.name)).join('/'));a.setAttribute('download','');name.append(a)}
+row.append(name,node('span',folder?'':human(e.size),'muted size'));
+const act=node('div','','actions');
+const ren=node('button','Rename','link');ren.onclick=()=>doRename(e.name);
+const del=node('button','Delete','link danger');del.onclick=()=>doDelete(e.name,folder);
+act.append(ren,del);row.append(act);box.append(row)}
+}
+async function doRename(name){const nn=prompt('Rename "'+name+'" to:',name);if(!nn||nn===name)return;
+try{await api('/admin/api/rename',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({path:rel(),name:name,new_name:nn})});flash('Renamed.',true);load()}catch(e){flash(e.message)}}
+async function doDelete(name,folder){if(!confirm('Delete '+(folder?'folder "'+name+'" and everything inside it':'"'+name+'"')+'? This cannot be undone.'))return;
+try{await api('/admin/api/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({path:rel(),name:name})});flash('Deleted.',true);load()}catch(e){flash(e.message)}}
+$('#mkdirBtn').onclick=async()=>{const n=prompt('New folder name:');if(!n)return;
+try{await api('/admin/api/mkdir',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({path:rel(),name:n})});flash('Folder created.',true);load()}catch(e){flash(e.message)}};
+
+// ---- upload (XHR for progress) ----
+$('#uploadBtn').onclick=()=>$('#file').click();
+$('#file').onchange=()=>{const f=$('#file').files[0];if(f)upload(f);$('#file').value=''};
+function upload(file){
+const xhr=new XMLHttpRequest();
+xhr.open('PUT','/admin/api/upload?path='+encodeURIComponent(rel())+'&name='+encodeURIComponent(file.name));
+xhr.upload.onprogress=e=>{if(e.lengthComputable)flash('Uploading '+file.name+'… '+Math.floor(e.loaded/e.total*100)+'%',true)};
+xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){flash('Uploaded '+file.name+'.',true);load()}else{let m='HTTP '+xhr.status;try{m=JSON.parse(xhr.responseText).detail||m}catch(e){}flash('Upload failed: '+m)}};
+xhr.onerror=()=>flash('Upload failed: network error');
+xhr.send(file);
+}
+
+boot();
+})();
+</script>
+</body>
+</html>

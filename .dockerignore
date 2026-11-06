@@ -1,0 +1,11 @@
+.git
+.gitignore
+shared
+.env
+.env.example
+README.md
+AGENTS.md
+CLAUDE.md
+GLOSSARY.md
+docs
+**/__pycache__

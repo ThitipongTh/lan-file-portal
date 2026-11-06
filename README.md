@@ -1,41 +1,65 @@
-# AIMSLAB LAN File Sharing
+# AIMsLab File Sharing
 
-A read-only file download website for your classroom or lab, powered by Docker Compose and Nginx.
+A LAN file-sharing website, powered by Docker Compose. Anyone on your local
+network can browse and download files from a folder on this PC. A single
+**admin** signs in to manage those files (upload, new folder, rename, delete)
+and to watch **live download/upload speed** on a dashboard.
 
-## Start in three commands
+> **Trusted local network only.** There is no HTTPS and the admin password
+> travels in the clear. See [Security](#security).
+
+## Start in three steps
 
 ```bash
 git clone https://github.com/syanyong/lan-file-portal.git
 cd lan-file-portal
-docker compose up -d
+cp .env.example .env        # then set ADMIN_PASSWORD (see below)
+docker compose up -d --build
 ```
 
-Put the files you wish to share into the `shared/` directory. They appear immediately, without restarting Docker.
+Put the files you wish to share into the `shared/` directory (or point
+`SHARE_PATH` at another folder — see [below](#choose-the-shared-host-folder)).
+They appear immediately, no restart needed.
 
-On the server, open http://localhost:8080 . On another device on the same network, open `http://SERVER-IP:8080`. Users can browse folders, search filenames within the current folder, and download files. Clients need only a browser.
+On the server, open <http://localhost:8080>. On another device on the same
+network, open `http://SERVER-IP:8080`. Clients need only a browser.
 
 Find the server IP:
 - macOS: `ipconfig getifaddr en0` (verify the Wi-Fi device)
 - Linux: `hostname -I`
 - Windows: `ipconfig`
 
-## Commands
+## The admin page
 
-```bash
-docker compose up -d       # Start in the background
-docker compose logs -f      # See logs
-docker compose down         # Stop the server
-```
+Visit `/admin` (e.g. <http://localhost:8080/admin>) and sign in with
+`ADMIN_PASSWORD`. You get:
 
-To change the host port, copy `.env.example` to `.env`, edit `PORT=8080`, then run `docker compose up -d` again.
+- **Live dashboard** — current download & upload throughput, a 60-second
+  download/upload speed graph, totals since start, and a list of active
+  transfers. Metrics live in memory and reset when the container restarts.
+- **File management** — upload files, create folders, rename, and delete, all
+  acting on the shared folder.
+
+If `ADMIN_PASSWORD` is blank, the admin page is **disabled** and the site is
+download-only. Set it in `.env` and run `docker compose up -d` to enable it.
+
+## Configuration (`.env`)
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `PORT` | Host port to publish on the LAN | `8080` |
+| `SHARE_PATH` | Host folder to share (mounted read-write) | `./shared` |
+| `ADMIN_PASSWORD` | Enables the admin page; blank = download-only | _(blank)_ |
+| `SESSION_SECRET` | Keeps admins logged in across restarts | _(random each start)_ |
+| `MAX_UPLOAD_BYTES` | Upload size cap; `0` disables | `2147483648` (2 GiB) |
+| `PUID` / `PGID` | User/group the container runs as | `1000` / `1000` |
 
 ## Choose the shared host folder
 
 The default is `./shared`, relative to `compose.yaml`. To share another folder:
 
 1. Create the folder and place only files intended for LAN users inside it.
-2. Copy `.env.example` to `.env` (`cp .env.example .env` on macOS/Linux; `Copy-Item .env.example .env` in PowerShell).
-3. Set `SHARE_PATH` in `.env`, using one of these examples:
+2. Set `SHARE_PATH` in `.env`, using one of these examples:
 
    | Host | Example |
    | --- | --- |
@@ -44,41 +68,91 @@ The default is `./shared`, relative to `compose.yaml`. To share another folder:
    | Windows Docker Desktop | `SHARE_PATH='C:/AIMSLAB Shared'` |
    | Docker from WSL | `SHARE_PATH=/mnt/c/AIMSLAB-Shared` |
 
-4. Run `docker compose config --quiet`, then `docker compose up -d`.
+3. Run `docker compose up -d` to recreate the container.
 
-Use an absolute path for clarity; use forward slashes on Windows and quote paths containing spaces. Do not use `~` as a home-directory shortcut. Docker Desktop must have permission to access the folder (check its file-sharing settings if the mount is denied). On Linux, grant directory traversal and file read permissions to the container without making files world-writable. SELinux hosts may need an administrator-approved bind-mount label; do not disable SELinux.
+Use an absolute path for clarity; use forward slashes on Windows and quote
+paths containing spaces. Do not use `~`.
 
-Compose mounts your chosen host folder at `/srv/shared` **read-only**. Keep this container path unchanged. A missing host folder causes startup to fail instead of silently creating an empty folder. Changing `SHARE_PATH` requires `docker compose up -d` to recreate the container; changing files within the chosen folder does not. `.env` is excluded from Git. Do not commit shared files or private host paths.
+**Ownership matters because uploads/deletes write to this folder.** The
+container runs as `PUID:PGID` (default `1000:1000`). These must match the owner
+of `SHARE_PATH`, or management will fail with permission errors. Find your IDs
+with `id -u` and `id -g` (Linux/macOS) and set `PUID`/`PGID` in `.env`
+accordingly. On Docker Desktop (macOS/Windows) the default usually works; grant
+Docker access to the folder in its file-sharing settings if the mount is denied.
+
+## Commands
+
+```bash
+docker compose up -d --build   # Build and start in the background
+docker compose logs -f         # See logs
+docker compose down            # Stop the server
+```
+
+Changing `SHARE_PATH`, `PORT`, `ADMIN_PASSWORD`, or `PUID`/`PGID` requires
+`docker compose up -d` to recreate the container. Adding or removing files
+inside the shared folder does not.
 
 ## Verify deployment
 
-- Run `docker compose config --quiet` and inspect `docker compose config` locally to confirm the source folder and read-only mount. Its output contains your host path; avoid posting it publicly.
-- Run `docker compose exec portal nginx -t` and `docker compose ps`.
-- Open `http://localhost:8080` (or your configured port) and check the page title and header say **AIMSLAB LAN File Sharing**.
-- Add a harmless sample file and nested folder to your chosen host folder. Browse, search, sort, and download them; compare the downloaded contents with the original. Remove the samples afterward.
+- `docker compose config --quiet` then `docker compose up -d --build`.
+- `docker compose ps` shows the container `Up`; `docker compose logs portal`
+  shows `Application startup complete`.
+- Open `http://localhost:8080` — the title and header read **AIMsLab File
+  Sharing**. Browse, search, and download a sample file; confirm the download
+  matches the original.
+- Open `/admin`, sign in, and confirm the dashboard updates while a download is
+  in progress. Upload a file and confirm it appears for public download.
+- Confirm the app filesystem is read-only except the share:
+  `docker compose exec portal sh -c 'touch /app/x'` must fail;
+  `docker compose exec portal sh -c 'touch /srv/shared/.x && rm /srv/shared/.x'`
+  must succeed.
 - Repeat from a second device on the trusted LAN using `http://SERVER-IP:8080`.
-- Confirm `docker compose exec portal sh -c 'touch /srv/shared/.write-check'` fails with a read-only-filesystem error. If it unexpectedly succeeds, remove the marker and correct the mount before serving files.
 
 ## Project layout
 
-- `compose.yaml`: Docker configuration
-- `nginx.conf`: read-only file server and directory listing API
-- `web/index.html`: browser interface
-- `shared/`: files to distribute (contents are excluded from Git)
-- `.env.example`: host port and shared-folder configuration
-- `AGENTS.md`: authoritative deployment, security, maintenance, and verification instructions for agents
-- `CLAUDE.md`: directs Claude to `AGENTS.md`
+- `compose.yaml`: Docker Compose service definition
+- `Dockerfile`: builds the application image
+- `app/`: the FastAPI application
+  - `main.py`: routes (UI, browse/download, admin manage, metrics WebSocket)
+  - `security.py`: path-safety boundary and session tokens
+  - `metrics.py`: in-memory live transfer metering
+  - `config.py`: environment-driven configuration
+  - `static/index.html`: public browse/download page
+  - `static/admin.html`: admin dashboard + file manager
+- `shared/`: default share folder (contents excluded from Git)
+- `.env.example`: configuration template
+- `GLOSSARY.md`, `docs/adr/`: domain model and architecture decisions
+- `AGENTS.md`: authoritative guide for the deploying/maintaining agent
 
 ## Troubleshooting
 
-- Server and client must have network connectivity. Guest Wi-Fi / wireless client isolation can block transfers.
-- Check that TCP 8080 is permitted by the host firewall **only on your trusted LAN**.
-- Ensure files exist in your configured `SHARE_PATH` (default `shared/`) and are readable.
-- If port 8080 is occupied, set a different `PORT` in `.env`.
-- Docker Compose v2 is required.
+- **Admin page says it's disabled**: set `ADMIN_PASSWORD` in `.env` and
+  `docker compose up -d`.
+- **Uploads/deletes fail with a permission error**: `PUID`/`PGID` don't match
+  the owner of `SHARE_PATH`. Fix them in `.env` and recreate.
+- **"source directory does not exist"**: create your `SHARE_PATH` folder first;
+  the mount will not auto-create it.
+- **Port busy**: set a different `PORT` in `.env`.
+- Guest Wi-Fi / wireless client isolation can block LAN transfers.
 
 ## Security
 
-**Trusted local network only.** No authentication and no HTTPS. Anyone able to reach the port can browse and download the shared files. Never put private files there, never forward this port on your router, and never expose it publicly. Docker publishes the port on all host interfaces unless you restrict the binding or host firewall. The shared directory is mounted read-only.
+**Trusted local network only.** This is a classroom/lab utility, not an
+authenticated document-management system.
 
-This is a classroom utility, not an authenticated document management system.
+- **No HTTPS.** The admin password and session cookie travel in the clear over
+  the LAN. Anyone sniffing the network can capture them. Never reuse a password
+  you use elsewhere.
+- **No public exposure.** Never forward this port on your router, and never put
+  it behind a public tunnel or host. Docker publishes the port on all host
+  interfaces unless you restrict the binding or host firewall — restrict it to
+  your trusted LAN.
+- **The share is read-write.** The admin can delete files, and a read-only
+  container mount is *not* used (management needs to write). Back up anything
+  important; deletes are permanent.
+- **No per-user accounts.** There is one admin and an anonymous public. Everyone
+  who can reach the port can download every file in the share. Never put
+  credentials, personal data, or confidential material there.
+- Retained hardening: the container runs **non-root** with `no-new-privileges`,
+  a **read-only root filesystem** (only the share and `/tmp` are writable), and
+  rejects path traversal and hidden (`.`-prefixed) names.
